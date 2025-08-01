@@ -6,6 +6,10 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris = game:GetService("Debris")
 
+-- Ваши ссылки
+local SERVER_SCRIPT_URL = "https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/Server.lua"
+local ADMINS_LIST_URL = "https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/admins.txt"
+
 -- Проверка серверного контекста
 if not RunService:IsServer() then
     warn("Серверный скрипт запущен на клиенте!")
@@ -20,7 +24,7 @@ ServerEvents.Parent = ReplicatedStorage
 -- Загрузка списка администраторов с GitHub
 local function LoadAdminList()
     local success, response = pcall(function()
-        return game:HttpGet("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/admins.txt")
+        return game:HttpGet(ADMINS_LIST_URL)
     end)
     
     if success and response then
