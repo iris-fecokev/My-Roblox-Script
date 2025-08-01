@@ -1,457 +1,540 @@
------ КЛИЕНТСКАЯ ЧАСТЬ -----
 -- Client.lua
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService = game:GetService("HttpService")
-local UserInputService = game:GetService("UserInputService")
+local Player = Players.LocalPlayer
+local Mouse = Player:GetMouse()
+local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
 
--- Ваши ссылки
-local SERVER_SCRIPT_URL = "https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/Server.lua"
-local CLIENT_SCRIPT_URL = "https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/Client.lua"
-local ADMINS_LIST_URL = "https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/admins.txt"
+-- Загрузка зависимостей
+local Shared = loadstring(game:HttpGet("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/Shared.lua", true))()
+local AdminList = Shared.FetchAdmins()
+local isAdmin = table.find(AdminList, Player.Name) ~= nil
 
--- Загрузка списка администраторов с GitHub
-local function LoadAdminList()
-    local success, response = pcall(function()
-        return game:HttpGet(ADMINS_LIST_URL)
+-- Попытка запуска серверной части
+local serverLoaded = false
+local function LoadServerScript()
+    if serverLoaded then return true end
+    
+    -- Попытка 1: через модуль
+    local moduleSuccess, moduleResult = pcall(function()
+        return shared.LoadServerScript()
     end)
     
-    if success and response then
-        local admins = {}
-        for line in response:gmatch("[^\r\n]+") do
-            admins[line:lower()] = true
-        end
-        return admins
+    if moduleSuccess and moduleResult then
+        serverLoaded = true
+        return true
     end
     
-    return {["yourusername"] = true} -- Fallback
+    -- Попытка 2: прямой запуск
+    local loadSuccess, loadError = pcall(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/Server.lua", true))()
+    end)
+    
+    if loadSuccess then
+        serverLoaded = true
+        return true
+    end
+    
+    warn("Failed to load server script: "..tostring(loadError))
+    return false
 end
 
-local AdminList = LoadAdminList()
-local IsAdmin = AdminList[LocalPlayer.Name:lower()] or false
-
--- Создание перемещаемого интерфейса
+-- Создание GUI
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "Inc0muUI_"..tostring(math.random(10000,99999))
+ScreenGui.Name = "UniversalHax"
+ScreenGui.Parent = CoreGui
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = game:GetService("CoreGui")
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainWindow"
-MainFrame.Size = UDim2.new(0, 400, 0, 500)
-MainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
+MainFrame.Size = UDim2.new(0, 450, 0, 550)
+MainFrame.Position = UDim2.new(0.5, -225, 0.5, -275)
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.BackgroundTransparency = 0.2
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
-MainFrame.BorderSizePixel = 0
-MainFrame.ClipsDescendants = true
+MainFrame.Active = true
+MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
 
-local TopBar = Instance.new("Frame")
-TopBar.Name = "TopBar"
-TopBar.Size = UDim2.new(1, 0, 0, 30)
-TopBar.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
-TopBar.BorderSizePixel = 0
-TopBar.Parent = MainFrame
+-- Заголовок в стиле inc0mu
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 30)
+TitleBar.BackgroundColor3 = Color3.fromRGB(120, 80, 220)
+TitleBar.Parent = MainFrame
 
 local Title = Instance.new("TextLabel")
-Title.Name = "Title"
-Title.Text = "Добрый Читер v6"
-Title.TextColor3 = Color3.fromRGB(200, 200, 255)
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 14
-Title.Size = UDim2.new(1, -60, 1, 0)
-Title.Position = UDim2.new(0, 10, 0, 0)
+Title.Text = "UNIVERSAL HAX v5.0"
+Title.Size = UDim2.new(1, 0, 1, 0)
 Title.BackgroundTransparency = 1
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = TopBar
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.Font = Enum.Font.GothamBold
+Title.Parent = TitleBar
 
-local CloseButton = Instance.new("TextButton")
-CloseButton.Name = "CloseButton"
-CloseButton.Text = "×"
-CloseButton.TextColor3 = Color3.fromRGB(200, 200, 200)
-CloseButton.Font = Enum.Font.GothamBold
-CloseButton.TextSize = 20
-CloseButton.Size = UDim2.new(0, 30, 1, 0)
-CloseButton.Position = UDim2.new(1, -30, 0, 0)
-CloseButton.BackgroundTransparency = 1
-CloseButton.Parent = TopBar
+-- Вкладки
+local TabButtons = {}
+local TabFrames = {}
+local Tabs = {"Основное", "Доброта", "Админ", "Конфиг"}
 
-local TabContainer = Instance.new("Frame")
-TabContainer.Name = "TabContainer"
-TabContainer.Size = UDim2.new(1, -10, 1, -40)
-TabContainer.Position = UDim2.new(0, 5, 0, 35)
-TabContainer.BackgroundTransparency = 1
-TabContainer.Parent = MainFrame
-
--- Функционал перемещения окна
-local dragging = false
-local dragStartPos
-local startPos
-
-local function UpdatePosition(input)
-    local delta = input.Position - dragStartPos
-    MainFrame.Position = UDim2.new(
-        startPos.X.Scale, 
-        startPos.X.Offset + delta.X,
-        startPos.Y.Scale,
-        startPos.Y.Offset + delta.Y
-    )
+for i, tabName in ipairs(Tabs) do
+    local btn = Instance.new("TextButton")
+    btn.Text = tabName
+    btn.Size = UDim2.new(0.25, 0, 0, 30)
+    btn.Position = UDim2.new(0.25 * (i-1), 0, 0, 30)
+    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+    btn.TextColor3 = Color3.fromRGB(220, 220, 220)
+    btn.Parent = MainFrame
+    table.insert(TabButtons, btn)
+    
+    local frame = Instance.new("ScrollingFrame")
+    frame.Size = UDim2.new(1, -10, 1, -70)
+    frame.Position = UDim2.new(0, 5, 0, 65)
+    frame.Visible = i == 1
+    frame.BackgroundTransparency = 1
+    frame.ScrollBarThickness = 5
+    frame.CanvasSize = UDim2.new(0, 0, 0, 800)
+    frame.Parent = MainFrame
+    table.insert(TabFrames, frame)
+    
+    btn.MouseButton1Click:Connect(function()
+        for _, f in ipairs(TabFrames) do f.Visible = false end
+        frame.Visible = true
+    end)
 end
 
-TopBar.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStartPos = input.Position
-        startPos = MainFrame.Position
+-- Функция создания элементов
+local function CreateElement(parent, type, props)
+    local element = Instance.new(type)
+    for prop, value in pairs(props) do
+        element[prop] = value
+    end
+    element.Parent = parent
+    return element
+end
+
+-- Основные функции
+local yOffset = 10
+local function AddSection(parent, title)
+    local section = CreateElement(parent, "TextLabel", {
+        Text = "─── "..title.." ───",
+        Size = UDim2.new(1, -10, 0, 20),
+        Position = UDim2.new(0, 5, 0, yOffset),
+        TextColor3 = Color3.fromRGB(120, 80, 220),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBold
+    })
+    yOffset += 30
+    return yOffset
+end
+
+yOffset = AddSection(TabFrames[1], "ПЕРЕДВИЖЕНИЕ")
+
+local SpeedBox = CreateElement(TabFrames[1], "TextBox", {
+    PlaceholderText = "Скорость (16)",
+    Size = UDim2.new(0.9, 0, 0, 25),
+    Position = UDim2.new(0.05, 0, 0, yOffset),
+    BackgroundColor3 = Color3.fromRGB(25, 25, 35),
+    TextColor3 = Color3.fromRGB(220, 220, 220)
+})
+
+local JumpBox = CreateElement(TabFrames[1], "TextBox", {
+    PlaceholderText = "Прыжок (50)",
+    Size = UDim2.new(0.9, 0, 0, 25),
+    Position = UDim2.new(0.05, 0, 0, yOffset + 35),
+    BackgroundColor3 = Color3.fromRGB(25, 25, 35),
+    TextColor3 = Color3.fromRGB(220, 220, 220)
+})
+
+local ApplyBtn = CreateElement(TabFrames[1], "TextButton", {
+    Text = "ПРИМЕНИТЬ",
+    Size = UDim2.new(0.9, 0, 0, 30),
+    Position = UDim2.new(0.05, 0, 0, yOffset + 70),
+    BackgroundColor3 = Color3.fromRGB(80, 140, 240),
+    TextColor3 = Color3.new(1, 1, 1)
+})
+
+ApplyBtn.MouseButton1Click:Connect(function()
+    if Player.Character and Player.Character:FindFirstChild("Humanoid") then
+        Player.Character.Humanoid.WalkSpeed = tonumber(SpeedBox.Text) or 16
+        Player.Character.Humanoid.JumpPower = tonumber(JumpBox.Text) or 50
+    end
+end)
+
+yOffset += 110
+yOffset = AddSection(TabFrames[1], "ФУНКЦИИ")
+
+-- Декал спам
+local DecalBtn = CreateElement(TabFrames[1], "TextButton", {
+    Text = "СПАМ ДЕКАЛАМИ",
+    Size = UDim2.new(0.9, 0, 0, 30),
+    Position = UDim2.new(0.05, 0, 0, yOffset),
+    BackgroundColor3 = Color3.fromRGB(200, 60, 60),
+    TextColor3 = Color3.new(1, 1, 1)
+})
+
+DecalBtn.MouseButton1Click:Connect(function()
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            for _, face in ipairs(Enum.NormalId:GetEnumItems()) do
+                local decal = Instance.new("Decal")
+                decal.Texture = "rbxassetid://"..Shared.DecalID
+                decal.Face = face.Name
+                decal.Parent = obj
+            end
+        end
+    end
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player.Character then
+            for _, part in ipairs(player.Character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    for _, face in ipairs(Enum.NormalId:GetEnumItems()) do
+                        local decal = Instance.new("Decal")
+                        decal.Texture = "rbxassetid://"..Shared.DecalID
+                        decal.Face = face.Name
+                        decal.Parent = part
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Летание
+local FlyEnabled = false
+local FlyHistory = {}
+local FlyBtn = CreateElement(TabFrames[1], "TextButton", {
+    Text = "ВКЛЮЧИТЬ ПОЛЕТ",
+    Size = UDim2.new(0.9, 0, 0, 30),
+    Position = UDim2.new(0.05, 0, 0, yOffset + 40),
+    BackgroundColor3 = Color3.fromRGB(60, 150, 200),
+    TextColor3 = Color3.new(1, 1, 1)
+})
+
+FlyBtn.MouseButton1Click:Connect(function()
+    FlyEnabled = not FlyEnabled
+    FlyBtn.Text = FlyEnabled and "ВЫКЛЮЧИТЬ ПОЛЕТ" or "ВКЛЮЧИТЬ ПОЛЕТ"
+    
+    if FlyEnabled and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+        local root = Player.Character.HumanoidRootPart
+        local flyThread = coroutine.create(function()
+            while FlyEnabled and root do
+                table.insert(FlyHistory, root.Position)
+                if #FlyHistory > 100 then table.remove(FlyHistory, 1) end
+                
+                if #FlyHistory > 5 then
+                    root.CFrame = CFrame.new(FlyHistory[#FlyHistory - 5])
+                end
+                RunService.Heartbeat:Wait()
+            end
+        end)
+        coroutine.resume(flyThread)
+    end
+end)
+
+-- Звуковой интерфейс
+local SoundBox = CreateElement(TabFrames[1], "TextBox", {
+    PlaceholderText = "ID звука",
+    Size = UDim2.new(0.9, 0, 0, 25),
+    Position = UDim2.new(0.05, 0, 0, yOffset + 80),
+    BackgroundColor3 = Color3.fromRGB(25, 25, 35),
+    TextColor3 = Color3.fromRGB(220, 220, 220)
+})
+
+local PlaySoundBtn = CreateElement(TabFrames[1], "TextButton", {
+    Text = "ПРОИГРАТЬ ЗВУК",
+    Size = UDim2.new(0.9, 0, 0, 30),
+    Position = UDim2.new(0.05, 0, 0, yOffset + 115),
+    BackgroundColor3 = Color3.fromRGB(80, 180, 120),
+    TextColor3 = Color3.new(1, 1, 1)
+})
+
+local SpookyBtn = CreateElement(TabFrames[1], "TextButton", {
+    Text = "SPOOKY SKELETONS",
+    Size = UDim2.new(0.9, 0, 0, 30),
+    Position = UDim2.new(0.05, 0, 0, yOffset + 155),
+    BackgroundColor3 = Color3.fromRGB(180, 100, 220),
+    TextColor3 = Color3.new(1, 1, 1)
+})
+
+PlaySoundBtn.MouseButton1Click:Connect(function()
+    local soundId = SoundBox.Text
+    if soundId and tonumber(soundId) then
+        local soundEvent = game:GetService("ReplicatedStorage"):FindFirstChild("PlaySoundEvent")
+        if soundEvent then
+            soundEvent:FireServer(soundId)
+        end
+    end
+end)
+
+SpookyBtn.MouseButton1Click:Connect(function()
+    SoundBox.Text = "3469774300"
+    PlaySoundBtn:MouseButton1Click()
+end)
+
+-- Спин
+local SpinEnabled = false
+local SpinBtn = CreateElement(TabFrames[1], "TextButton", {
+    Text = "SPIN MODE",
+    Size = UDim2.new(0.9, 0, 0, 30),
+    Position = UDim2.new(0.05, 0, 0, yOffset + 195),
+    BackgroundColor3 = Color3.fromRGB(220, 120, 80),
+    TextColor3 = Color3.new(1, 1, 1)
+})
+
+SpinBtn.MouseButton1Click:Connect(function()
+    SpinEnabled = not SpinEnabled
+    if SpinEnabled and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+        local root = Player.Character.HumanoidRootPart
+        local spinThread = coroutine.create(function()
+            while SpinEnabled and root do
+                root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(30), 0)
+                RunService.Heartbeat:Wait()
+            end
+        end)
+        coroutine.resume(spinThread)
+    end
+end)
+
+-- Проигрывание анимации для всех
+local PlayAnimBtn = CreateElement(TabFrames[1], "TextButton", {
+    Text = "PLAY ANIMATION FOR ALL",
+    Size = UDim2.new(0.9, 0, 0, 30),
+    Position = UDim2.new(0.05, 0, 0, yOffset + 235),
+    BackgroundColor3 = Color3.fromRGB(220, 170, 50),
+    TextColor3 = Color3.new(1, 1, 1)
+})
+
+PlayAnimBtn.MouseButton1Click:Connect(function()
+    if isAdmin then
+        local adminEvent = game:GetService("ReplicatedStorage"):FindFirstChild("AdminEvent")
+        if adminEvent then
+            adminEvent:FireServer("PlayAnimationForAll")
+        end
+    else
+        warn("You need admin privileges to play animations for all players!")
+    end
+end)
+
+-- Режим "Доброты"
+yOffset = 10
+yOffset = AddSection(TabFrames[2], "АНТИЧИТ СИСТЕМА")
+
+local ReportBox = CreateElement(TabFrames[2], "TextBox", {
+    PlaceholderText = "Имя читера",
+    Size = UDim2.new(0.9, 0, 0, 25),
+    Position = UDim2.new(0.05, 0, 0, yOffset),
+    BackgroundColor3 = Color3.fromRGB(25, 25, 35),
+    TextColor3 = Color3.fromRGB(220, 220, 220)
+})
+
+local ReportBtn = CreateElement(TabFrames[2], "TextButton", {
+    Text = "СПАМ РЕПОРТАМИ",
+    Size = UDim2.new(0.9, 0, 0, 30),
+    Position = UDim2.new(0.05, 0, 0, yOffset + 35),
+    BackgroundColor3 = Color3.fromRGB(200, 80, 80),
+    TextColor3 = Color3.new(1, 1, 1)
+})
+
+ReportBtn.MouseButton1Click:Connect(function()
+    local playerName = ReportBox.Text
+    if playerName then
+        for i = 1, 50 do
+            -- Эмуляция отправки репортов
+            wait(0.05)
+        end
+    end
+end)
+
+local BanBtn = CreateElement(TabFrames[2], "TextButton", {
+    Text = "БАН ЧИТЕРОВ",
+    Size = UDim2.new(0.9, 0, 0, 30),
+    Position = UDim2.new(0.05, 0, 0, yOffset + 75),
+    BackgroundColor3 = Color3.fromRGB(180, 60, 60),
+    TextColor3 = Color3.new(1, 1, 1)
+})
+
+BanBtn.MouseButton1Click:Connect(function()
+    if isAdmin then
+        local adminEvent = game:GetService("ReplicatedStorage"):FindFirstChild("AdminEvent")
+        if adminEvent then
+            adminEvent:FireServer("KickAllCheaters")
+        end
+    end
+end)
+
+-- Админ-панель
+if isAdmin then
+    yOffset = 10
+    yOffset = AddSection(TabFrames[3], "АДМИН КОМАНДЫ")
+    
+    for i, cmd in ipairs(Shared.AdminCommands) do
+        local btn = CreateElement(TabFrames[3], "TextButton", {
+            Text = cmd,
+            Size = UDim2.new(0.9, 0, 0, 30),
+            Position = UDim2.new(0.05, 0, 0, yOffset + (i-1)*40),
+            BackgroundColor3 = Color3.fromRGB(120, 80, 220),
+            TextColor3 = Color3.new(1, 1, 1)
+        })
         
-        TweenService:Create(TopBar, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(50, 50, 70)}):Play()
-        
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-                TweenService:Create(TopBar, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(40, 40, 55)}):Play()
+        btn.MouseButton1Click:Connect(function()
+            local adminEvent = game:GetService("ReplicatedStorage"):FindFirstChild("AdminEvent")
+            if adminEvent then
+                if cmd == "ServerLock" then
+                    adminEvent:FireServer(cmd, "Сервер заблокирован администратором!")
+                else
+                    adminEvent:FireServer(cmd)
+                end
             end
         end)
     end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
-        UpdatePosition(input)
-    end
-end)
-
--- Создание вкладок
-local Tabs = {}
-local CurrentTab
-
-local function CreateTab(name)
-    local tabButton = Instance.new("TextButton")
-    tabButton.Name = name.."TabButton"
-    tabButton.Text = name
-    tabButton.TextColor3 = Color3.fromRGB(180, 180, 200)
-    tabButton.Font = Enum.Font.Gotham
-    tabButton.TextSize = 12
-    tabButton.Size = UDim2.new(0.2, -2, 0, 25)
-    tabButton.Position = UDim2.new(#Tabs * 0.2, 0, 0, 30)
-    tabButton.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
-    tabButton.BorderSizePixel = 0
-    tabButton.Parent = MainFrame
     
-    local tabContent = Instance.new("ScrollingFrame")
-    tabContent.Name = name.."Content"
-    tabContent.Size = UDim2.new(1, 0, 1, -5)
-    tabContent.Position = UDim2.new(0, 0, 0, 5)
-    tabContent.BackgroundTransparency = 1
-    tabContent.ScrollBarThickness = 5
-    tabContent.Visible = false
-    tabContent.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    tabContent.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 100)
-    tabContent.Parent = TabContainer
+    -- Админский конфиг
+    yOffset = 10
+    yOffset = AddSection(TabFrames[4], "АДМИН КОНФИГ")
     
-    local tabLayout = Instance.new("UIListLayout")
-    tabLayout.Name = "Layout"
-    tabLayout.Padding = UDim.new(0, 8)
-    tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    tabLayout.Parent = tabContent
+    local LockMessageBox = CreateElement(TabFrames[4], "TextBox", {
+        PlaceholderText = "Сообщение блокировки",
+        Size = UDim2.new(0.9, 0, 0, 25),
+        Position = UDim2.new(0.05, 0, 0, yOffset),
+        BackgroundColor3 = Color3.fromRGB(25, 25, 35),
+        TextColor3 = Color3.fromRGB(220, 220, 220)
+    })
     
-    local tab = {
-        Name = name,
-        Button = tabButton,
-        Content = tabContent,
-        Elements = {}
-    }
+    local LockToggle = CreateElement(TabFrames[4], "TextButton", {
+        Text = "БЛОКИРОВКА СЕРВЕРА: "..(Shared.Settings.ServerLock and "ВКЛ" or "ВЫКЛ"),
+        Size = UDim2.new(0.9, 0, 0, 30),
+        Position = UDim2.new(0.05, 0, 0, yOffset + 40),
+        BackgroundColor3 = Shared.Settings.ServerLock and Color3.fromRGB(80, 180, 120) or Color3.fromRGB(180, 80, 80),
+        TextColor3 = Color3.new(1, 1, 1)
+    })
     
-    tabButton.MouseButton1Click:Connect(function()
-        if CurrentTab then
-            CurrentTab.Content.Visible = false
-            CurrentTab.Button.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
-            CurrentTab.Button.TextColor3 = Color3.fromRGB(180, 180, 200)
-        end
+    LockToggle.MouseButton1Click:Connect(function()
+        Shared.Settings.ServerLock = not Shared.Settings.ServerLock
+        LockToggle.Text = "БЛОКИРОВКА СЕРВЕРА: "..(Shared.Settings.ServerLock and "ВКЛ" or "ВЫКЛ")
+        LockToggle.BackgroundColor3 = Shared.Settings.ServerLock and Color3.fromRGB(80, 180, 120) or Color3.fromRGB(180, 80, 80)
         
-        CurrentTab = tab
-        tabContent.Visible = true
-        tabButton.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-        tabButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    end)
-    
-    table.insert(Tabs, tab)
-    return tab
-end
-
--- Функции для создания элементов интерфейса
-local function AddLabel(tab, text)
-    local label = Instance.new("TextLabel")
-    label.Text = text
-    label.TextColor3 = Color3.fromRGB(200, 200, 220)
-    label.Font = Enum.Font.Gotham
-    label.TextSize = 14
-    label.Size = UDim2.new(1, -10, 0, 25)
-    label.BackgroundTransparency = 1
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = tab.Content
-    label.LayoutOrder = #tab.Elements + 1
-    
-    table.insert(tab.Elements, label)
-    return label
-end
-
-local function AddButton(tab, text, callback)
-    local button = Instance.new("TextButton")
-    button.Name = "Button"
-    button.Text = text
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.Font = Enum.Font.GothamBold
-    button.TextSize = 14
-    button.Size = UDim2.new(1, -10, 0, 30)
-    button.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-    button.BorderSizePixel = 0
-    button.Parent = tab.Content
-    button.LayoutOrder = #tab.Elements + 1
-    button.AutoButtonColor = false
-    
-    -- Простая анимация при наведении
-    button.MouseEnter:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
-    end)
-    
-    button.MouseLeave:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-    end)
-    
-    button.MouseButton1Down:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(90, 90, 110)
-    end)
-    
-    button.MouseButton1Up:Connect(function()
-        button.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
-    end)
-    
-    button.MouseButton1Click:Connect(function()
-        callback()
-    end)
-
-    table.insert(tab.Elements, button)
-    return button
-end
-
-local function AddSlider(tab, text, min, max, start, callback)
-    local container = Instance.new("Frame")
-    container.Size = UDim2.new(1, -10, 0, 60)
-    container.BackgroundTransparency = 1
-    container.Parent = tab.Content
-    container.LayoutOrder = #tab.Elements + 1
-    
-    local label = Instance.new("TextLabel")
-    label.Text = text..": "..start
-    label.TextColor3 = Color3.fromRGB(200, 200, 220)
-    label.Font = Enum.Font.Gotham
-    label.TextSize = 14
-    label.Size = UDim2.new(1, 0, 0, 20)
-    label.BackgroundTransparency = 1
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Parent = container
-    
-    local sliderTrack = Instance.new("Frame")
-    sliderTrack.Size = UDim2.new(1, 0, 0, 6)
-    sliderTrack.Position = UDim2.new(0, 0, 0, 30)
-    sliderTrack.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
-    sliderTrack.BorderSizePixel = 0
-    sliderTrack.Parent = container
-    
-    local sliderFill = Instance.new("Frame")
-    sliderFill.Size = UDim2.new((start - min) / (max - min), 0, 1, 0)
-    sliderFill.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-    sliderFill.BorderSizePixel = 0
-    sliderFill.Parent = sliderTrack
-    
-    local sliderHandle = Instance.new("TextButton")
-    sliderHandle.Size = UDim2.new(0, 20, 0, 20)
-    sliderHandle.Position = UDim2.new((start - min) / (max - min), -10, 0.5, -10)
-    sliderHandle.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
-    sliderHandle.Text = ""
-    sliderHandle.ZIndex = 2
-    sliderHandle.Parent = sliderTrack
-    
-    local dragging = false
-    local function updateSlider(input)
-        local pos = (input.Position.X - sliderTrack.AbsolutePosition.X) / sliderTrack.AbsoluteSize.X
-        pos = math.clamp(pos, 0, 1)
-        local value = math.floor(min + (max - min) * pos)
-        sliderFill.Size = UDim2.new(pos, 0, 1, 0)
-        sliderHandle.Position = UDim2.new(pos, -10, 0.5, -10)
-        label.Text = text..": "..value
-        callback(value)
-    end
-    
-    sliderHandle.MouseButton1Down:Connect(function()
-        dragging = true
-    end)
-    
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
+        local adminEvent = game:GetService("ReplicatedStorage"):FindFirstChild("AdminEvent")
+        if adminEvent then
+            adminEvent:FireServer("ServerLock", Shared.Settings.ServerLock, LockMessageBox.Text)
         end
     end)
     
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            updateSlider(input)
+    -- Кнопка ручной загрузки сервера
+    local ServerLoadBtn = CreateElement(TabFrames[3], "TextButton", {
+        Text = "ЗАГРУЗИТЬ СЕРВЕР",
+        Size = UDim2.new(0.9, 0, 0, 30),
+        Position = UDim2.new(0.05, 0, 0, yOffset + (#Shared.AdminCommands * 40 + 10)),
+        BackgroundColor3 = Color3.fromRGB(60, 180, 100),
+        TextColor3 = Color3.new(1, 1, 1)
+    })
+    
+    ServerLoadBtn.MouseButton1Click:Connect(function()
+        local success, err = pcall(function()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/Server.lua", true))()
+        end)
+        if success then
+            ServerLoadBtn.Text = "СЕРВЕР ЗАГРУЖЕН!"
+            wait(2)
+            ServerLoadBtn.Text = "ЗАГРУЗИТЬ СЕРВЕР"
+        else
+            warn("Failed to load server: "..tostring(err))
         end
     end)
+end
+
+-- Конфиг для всех
+yOffset = 10
+yOffset = AddSection(TabFrames[4], "НАСТРОЙКИ")
+
+local ThemeToggle = CreateElement(TabFrames[4], "TextButton", {
+    Text = "ТЕМА: "..Shared.Settings.Theme,
+    Size = UDim2.new(0.9, 0, 0, 30),
+    Position = UDim2.new(0.05, 0, 0, yOffset),
+    BackgroundColor3 = Color3.fromRGB(80, 140, 240),
+    TextColor3 = Color3.new(1, 1, 1)
+})
+
+ThemeToggle.MouseButton1Click:Connect(function()
+    Shared.Settings.Theme = Shared.Settings.Theme == "Dark" and "Light" or "Dark"
+    ThemeToggle.Text = "ТЕМА: "..Shared.Settings.Theme
+    Shared.ApplyTheme(MainFrame, Shared.Settings.Theme)
+end)
+
+local BetaToggle = CreateElement(TabFrames[4], "TextButton", {
+    Text = "БЕТА-ФУНКЦИИ: "..(Shared.Settings.BetaFeatures and "ВКЛ" or "ВЫКЛ"),
+    Size = UDim2.new(0.9, 0, 0, 30),
+    Position = UDim2.new(0.05, 0, 0, yOffset + 40),
+    BackgroundColor3 = Shared.Settings.BetaFeatures and Color3.fromRGB(80, 180, 120) or Color3.fromRGB(180, 80, 80),
+    TextColor3 = Color3.new(1, 1, 1)
+})
+
+BetaToggle.MouseButton1Click:Connect(function()
+    Shared.Settings.BetaFeatures = not Shared.Settings.BetaFeatures
+    BetaToggle.Text = "БЕТА-ФУНКЦИИ: "..(Shared.Settings.BetaFeatures and "ВКЛ" or "ВЫКЛ")
+    BetaToggle.BackgroundColor3 = Shared.Settings.BetaFeatures and Color3.fromRGB(80, 180, 120) or Color3.fromRGB(180, 80, 80)
+end)
+
+local DebugToggle = CreateElement(TabFrames[4], "TextButton", {
+    Text = "РЕЖИМ ДЕБАГА: "..(Shared.Settings.DebugMode and "ВКЛ" or "ВЫКЛ"),
+    Size = UDim2.new(0.9, 0, 0, 30),
+    Position = UDim2.new(0.05, 0, 0, yOffset + 80),
+    BackgroundColor3 = Shared.Settings.DebugMode and Color3.fromRGB(80, 180, 120) or Color3.fromRGB(180, 80, 80),
+    TextColor3 = Color3.new(1, 1, 1)
+})
+
+-- Дебаг информация
+local DebugFrame = CreateElement(ScreenGui, "Frame", {
+    Size = UDim2.new(0, 200, 0, 80),
+    Position = UDim2.new(1, -210, 1, -90),
+    BackgroundTransparency = 0.7,
+    BackgroundColor3 = Color3.new(0, 0, 0),
+    Visible = false
+})
+
+local DebugText = CreateElement(DebugFrame, "TextLabel", {
+    Size = UDim2.new(1, 0, 1, 0),
+    Text = "FPS: ...\nPING: ...\nMEM: ...",
+    TextColor3 = Color3.new(1, 1, 1),
+    BackgroundTransparency = 1,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Top
+})
+
+DebugToggle.MouseButton1Click:Connect(function()
+    Shared.Settings.DebugMode = not Shared.Settings.DebugMode
+    DebugToggle.Text = "РЕЖИМ ДЕБАГА: "..(Shared.Settings.DebugMode and "ВКЛ" or "ВЫКЛ")
+    DebugToggle.BackgroundColor3 = Shared.Settings.DebugMode and Color3.fromRGB(80, 180, 120) or Color3.fromRGB(180, 80, 80)
+    DebugFrame.Visible = Shared.Settings.DebugMode
+end)
+
+-- Обновление дебаг информации
+if Shared.Settings.DebugMode then
+    DebugFrame.Visible = true
+    local lastUpdate = time()
+    local frames = 0
     
-    sliderTrack.MouseButton1Down:Connect(function(input)
-        updateSlider(input)
+    RunService.Heartbeat:Connect(function(delta)
+        frames += 1
+        if time() - lastUpdate >= 1 then
+            local fps = frames
+            local ping = math.random(30, 100) -- Для демонстрации
+            local mem = math.floor((collectgarbage("count")/1024)*100)/100
+            
+            DebugText.Text = string.format("FPS: %d\nPING: %dms\nMEM: %.2fMB", fps, ping, mem)
+            
+            frames = 0
+            lastUpdate = time()
+        end
     end)
-    
-    table.insert(tab.Elements, container)
-    return container
 end
 
--- Создание вкладок
-local mainTab = CreateTab("Основное")
-local kindnessTab = CreateTab("Доброта")
-local cleanupTab = CreateTab("Безопасность")
-local adminTab = CreateTab("⚡ Админ")
-
--- Функция дезинфекции
-local function Cleanup()
-    ScreenGui:Destroy()
-    for _, v in pairs(getconnections(game:GetService("ScriptContext").Error)) do
-        pcall(function() v:Disable() end)
+-- Автоматическая попытка загрузки сервера
+if isAdmin then
+    if not LoadServerScript() then
+        warn("Automatic server load failed, use manual button")
     end
-    setfenv(1, {})
 end
 
--- Локальные функции персонажа (только клиентские)
-local WalkSpeed = 16
-local JumpPower = 50
-local IsFlying = false
-
--- Обновление скорости при изменении персонажа
-LocalPlayer.CharacterAdded:Connect(function(char)
-    char:WaitForChild("Humanoid")
-    char.Humanoid.WalkSpeed = WalkSpeed
-    char.Humanoid.JumpPower = JumpPower
-end)
-
--- Основные функции (только локальные)
-AddSlider(mainTab, "Скорость", 16, 500, 16, function(v)
-    WalkSpeed = v
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.WalkSpeed = v
-    end
-end)
-
-AddSlider(mainTab, "Прыжок", 50, 500, 50, function(v)
-    JumpPower = v
-    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-        LocalPlayer.Character.Humanoid.JumpPower = v
-    end
-end)
-
-AddButton(mainTab, "Летать (Вкл/Выкл)", function()
-    IsFlying = not IsFlying
-    if IsFlying then
-        -- Локальная реализация полета
-        AddLabel(mainTab, "Режим полета активирован (Пробел - вверх, Ctrl - вниз)")
-    else
-        AddLabel(mainTab, "Режим полета деактивирован")
-    end
-end)
-
--- Серверные функции (отправка команд)
-AddButton(mainTab, "Спамить декалами", function()
-    ReplicatedStorage.ServerEvents:FireServer("ApplyDecals", 1365169983)
-end)
-
--- Режим Доброты (серверные команды)
-AddButton(kindnessTab, "Бан читеров", function()
-    if IsAdmin then
-        ReplicatedStorage.ServerEvents:FireServer("BanCheaters")
-    else
-        AddLabel(kindnessTab, "Ошибка: Требуются права администратора")
-    end
-end)
-
-AddButton(kindnessTab, "Spooky Scary Skeletons", function()
-    ReplicatedStorage.ServerEvents:FireServer("PlaySound", 3469045940)
-end)
-
--- Система безопасности
-AddLabel(cleanupTab, "Функции очистки:")
-AddButton(cleanupTab, "Мягкая очистка", Cleanup)
-AddButton(cleanupTab, "Полная дезинфекция", function()
-    Cleanup()
-    ReplicatedStorage.ServerEvents:FireServer("SelfDestruct")
-    setfenv(1, {})
-end)
-
-local statusLabel = AddLabel(cleanupTab, "Статус: "..(IsAdmin and "⚡ Администратор" or "Игрок"))
-
--- Функции администратора
-AddButton(adminTab, "Обновить список админов", function()
-    AdminList = LoadAdminList()
-    IsAdmin = AdminList[LocalPlayer.Name:lower()] or false
-    statusLabel.Text = "Статус: "..(IsAdmin and "⚡ Администратор" or "Игрок")
-end)
-
--- Автоматическая установка сервера
-AddButton(adminTab, "Внедрить сервер", function()
-    -- Попытка встроить серверный скрипт
-    local success, err = pcall(function()
-        loadstring(game:HttpGet(SERVER_SCRIPT_URL, true))()
-    end)
-    
-    if success then
-        AddLabel(adminTab, "Серверная часть успешно внедрена!")
-    else
-        AddLabel(adminTab, "Ошибка внедрения: "..tostring(err))
-    end
-end)
-
--- Быстрая установка сервера через консоль
-AddButton(adminTab, "Быстрая установка", function()
-    setclipboard('loadstring(game:HttpGet("'..SERVER_SCRIPT_URL..'", true))()')
-    AddLabel(adminTab, "Команда скопирована в буфер! Вставьте в консоль F9")
-end)
-
-AddButton(adminTab, "Применить декалы", function()
-    ReplicatedStorage.ServerEvents:FireServer("ApplyDecals", 1365169983)
-end)
-
-AddButton(adminTab, "Проиграть звук", function()
-    ReplicatedStorage.ServerEvents:FireServer("PlaySound", 3469045940)
-end)
-
--- Кнопка закрытия
-CloseButton.MouseButton1Click:Connect(function()
-    ScreenGui:Destroy()
-end)
-
--- Активация первой вкладки
-if #Tabs > 0 then
-    Tabs[1].Button.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
-    Tabs[1].Button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Tabs[1].Content.Visible = true
-end
-
--- Анимация появления
-MainFrame.Size = UDim2.new(0, 0, 0, 0)
-MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-TweenService:Create(MainFrame, TweenInfo.new(0.3), {
-    Size = UDim2.new(0, 400, 0, 500),
-    Position = UDim2.new(0.5, -200, 0.5, -250)
-}):Play()
-
--- Автоматическая проверка сервера
-spawn(function()
-    wait(5)
-    if ReplicatedStorage:FindFirstChild("ServerEvents") then
-        AddLabel(adminTab, "Серверная часть активна")
-    else
-        AddLabel(adminTab, "Серверная часть не установлена")
-    end
-end)
+Shared.ApplyTheme(MainFrame, Shared.Settings.Theme)
