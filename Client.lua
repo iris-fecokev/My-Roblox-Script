@@ -52,7 +52,7 @@ TopBar.Parent = MainFrame
 
 local Title = Instance.new("TextLabel")
 Title.Name = "Title"
-Title.Text = "Добрый Читер v4"
+Title.Text = "Добрый Читер v5"
 Title.TextColor3 = Color3.fromRGB(200, 200, 255)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 14
@@ -101,7 +101,6 @@ TopBar.InputBegan:Connect(function(input)
         dragStartPos = input.Position
         startPos = MainFrame.Position
         
-        -- Эффект при нажатии
         TweenService:Create(TopBar, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(50, 50, 70)}):Play()
         
         input.Changed:Connect(function()
@@ -163,18 +162,14 @@ local function CreateTab(name)
     tabButton.MouseButton1Click:Connect(function()
         if CurrentTab then
             CurrentTab.Content.Visible = false
-            TweenService:Create(CurrentTab.Button, TweenInfo.new(0.2), {
-                BackgroundColor3 = Color3.fromRGB(35, 35, 45),
-                TextColor3 = Color3.fromRGB(180, 180, 200)
-            }:Play()
+            CurrentTab.Button.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+            CurrentTab.Button.TextColor3 = Color3.fromRGB(180, 180, 200)
         end
         
         CurrentTab = tab
         tabContent.Visible = true
-        TweenService:Create(tabButton, TweenInfo.new(0.2), {
-            BackgroundColor3 = Color3.fromRGB(60, 60, 80),
-            TextColor3 = Color3.fromRGB(255, 255, 255)
-        }:Play()
+        tabButton.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+        tabButton.TextColor3 = Color3.fromRGB(255, 255, 255)
     end)
     
     table.insert(Tabs, tab)
@@ -200,31 +195,39 @@ end
 
 local function AddButton(tab, text, callback)
     local button = Instance.new("TextButton")
+    button.Name = "Button"
     button.Text = text
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
-    button.Font = Enum.Font.Gotham
+    button.Font = Enum.Font.GothamBold
     button.TextSize = 14
     button.Size = UDim2.new(1, -10, 0, 30)
     button.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
     button.BorderSizePixel = 0
     button.Parent = tab.Content
     button.LayoutOrder = #tab.Elements + 1
+    button.AutoButtonColor = false
     
+    -- Простая анимация при наведении
     button.MouseEnter:Connect(function()
-        TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(70, 70, 90)}):Play()
+        button.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
     end)
     
     button.MouseLeave:Connect(function()
-        TweenService:Create(button, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(60, 60, 80)}):Play()
+        button.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    end)
+    
+    button.MouseButton1Down:Connect(function()
+        button.BackgroundColor3 = Color3.fromRGB(90, 90, 110)
+    end)
+    
+    button.MouseButton1Up:Connect(function()
+        button.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
     end)
     
     button.MouseButton1Click:Connect(function()
-        TweenService:Create(button, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(90, 90, 110)}):Play()
-        wait(0.1)
-        TweenService:Create(button, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(60, 60, 80)}):Play()
         callback()
     end)
-    
+
     table.insert(tab.Elements, button)
     return button
 end
@@ -280,13 +283,11 @@ local function AddSlider(tab, text, min, max, start, callback)
     
     sliderHandle.MouseButton1Down:Connect(function()
         dragging = true
-        TweenService:Create(sliderHandle, TweenInfo.new(0.1), {Size = UDim2.new(0, 24, 0, 24)}):Play()
     end)
     
     UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 and dragging then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = false
-            TweenService:Create(sliderHandle, TweenInfo.new(0.1), {Size = UDim2.new(0, 20, 0, 20)}):Play()
         end
     end)
     
@@ -323,7 +324,7 @@ local function Cleanup()
     setfenv(1, {})
 end
 
--- Локальные функции персонажа
+-- Локальные функции персонажа (только клиентские)
 local WalkSpeed = 16
 local JumpPower = 50
 local IsFlying = false
@@ -335,7 +336,7 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     char.Humanoid.JumpPower = JumpPower
 end)
 
--- Основные функции
+-- Основные функции (только локальные)
 AddSlider(mainTab, "Скорость", 16, 500, 16, function(v)
     WalkSpeed = v
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
@@ -350,21 +351,22 @@ AddSlider(mainTab, "Прыжок", 50, 500, 50, function(v)
     end
 end)
 
-AddButton(mainTab, "Спамить декалами", function()
-    ReplicatedStorage.ServerEvents:FireServer("ApplyDecals", 1365169983)
-end)
-
 AddButton(mainTab, "Летать (Вкл/Выкл)", function()
     IsFlying = not IsFlying
     if IsFlying then
-        -- Реализация полета
+        -- Локальная реализация полета
         AddLabel(mainTab, "Режим полета активирован (Пробел - вверх, Ctrl - вниз)")
     else
         AddLabel(mainTab, "Режим полета деактивирован")
     end
 end)
 
--- Режим Доброты
+-- Серверные функции (отправка команд)
+AddButton(mainTab, "Спамить декалами", function()
+    ReplicatedStorage.ServerEvents:FireServer("ApplyDecals", 1365169983)
+end)
+
+-- Режим Доброты (серверные команды)
 AddButton(kindnessTab, "Бан читеров", function()
     if IsAdmin then
         ReplicatedStorage.ServerEvents:FireServer("BanCheaters")
@@ -416,10 +418,9 @@ end)
 
 -- Активация первой вкладки
 if #Tabs > 0 then
-    Tabs[1].Button:SetAttribute("Pressed", true)
-    Tabs[1].Content.Visible = true
     Tabs[1].Button.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
     Tabs[1].Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Tabs[1].Content.Visible = true
 end
 
 -- Анимация появления
