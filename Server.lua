@@ -63,11 +63,27 @@ local function ApplyDecals(decalId)
             end
         end
     end
+    
+    -- Создание эффекта для новых игроков
+    Players.PlayerAdded:Connect(function(player)
+        player.CharacterAdded:Connect(function(char)
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") and not part:FindFirstChild("Inc0muDecal") then
+                    local decal = Instance.new("Decal")
+                    decal.Name = "Inc0muDecal"
+                    decal.Texture = "rbxassetid://"..tostring(decalId)
+                    decal.Face = Enum.NormalId.Front
+                    decal.Parent = part
+                end
+            end
+        end)
+    end)
 end
 
 local function PlaySound(soundId)
     soundId = tonumber(soundId) or 3469045940
     
+    -- Создание звука для всех игроков
     for _, player in ipairs(Players:GetPlayers()) do
         if player.Character then
             local head = player.Character:FindFirstChild("Head")
@@ -90,6 +106,22 @@ local function PlaySound(soundId)
             end
         end
     end
+    
+    -- Обработка новых игроков
+    Players.PlayerAdded:Connect(function(player)
+        player.CharacterAdded:Connect(function(char)
+            wait(1) -- Даем время на загрузку
+            local head = char:FindFirstChild("Head")
+            if head then
+                local sound = Instance.new("Sound")
+                sound.SoundId = "rbxassetid://"..tostring(soundId)
+                sound.Volume = 1
+                sound.Parent = head
+                sound:Play()
+                Debris:AddItem(sound, 30)
+            end
+        end)
+    end)
 end
 
 local function BanCheaters()
