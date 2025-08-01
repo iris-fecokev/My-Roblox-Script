@@ -20,7 +20,7 @@ ServerEvents.Parent = ReplicatedStorage
 -- Загрузка списка администраторов с GitHub
 local function LoadAdminList()
     local success, response = pcall(function()
-        return game:HttpGet("https://raw.githubusercontent.com/your_username/your_repo/main/admins.txt")
+        return game:HttpGet("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/admins.txt")
     end)
     
     if success and response then
