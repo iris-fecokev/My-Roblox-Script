@@ -8,10 +8,15 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 
+-- Ваши ссылки
+local SERVER_SCRIPT_URL = "https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/Server.lua"
+local CLIENT_SCRIPT_URL = "https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/Client.lua"
+local ADMINS_LIST_URL = "https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/admins.txt"
+
 -- Загрузка списка администраторов с GitHub
 local function LoadAdminList()
     local success, response = pcall(function()
-        return game:HttpGet("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/admins.txt")
+        return game:HttpGet(ADMINS_LIST_URL)
     end)
     
     if success and response then
@@ -52,7 +57,7 @@ TopBar.Parent = MainFrame
 
 local Title = Instance.new("TextLabel")
 Title.Name = "Title"
-Title.Text = "Добрый Читер v5"
+Title.Text = "Добрый Читер v6"
 Title.TextColor3 = Color3.fromRGB(200, 200, 255)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 14
@@ -309,11 +314,7 @@ end
 local mainTab = CreateTab("Основное")
 local kindnessTab = CreateTab("Доброта")
 local cleanupTab = CreateTab("Безопасность")
-local adminTab
-
-if IsAdmin then
-    adminTab = CreateTab("⚡ Админ")
-end
+local adminTab = CreateTab("⚡ Админ")
 
 -- Функция дезинфекции
 local function Cleanup()
@@ -391,25 +392,39 @@ end)
 local statusLabel = AddLabel(cleanupTab, "Статус: "..(IsAdmin and "⚡ Администратор" or "Игрок"))
 
 -- Функции администратора
-if IsAdmin then
-    AddButton(adminTab, "Обновить список админов", function()
-        AdminList = LoadAdminList()
-        IsAdmin = AdminList[LocalPlayer.Name:lower()] or false
-        statusLabel.Text = "Статус: "..(IsAdmin and "⚡ Администратор" or "Игрок")
+AddButton(adminTab, "Обновить список админов", function()
+    AdminList = LoadAdminList()
+    IsAdmin = AdminList[LocalPlayer.Name:lower()] or false
+    statusLabel.Text = "Статус: "..(IsAdmin and "⚡ Администратор" or "Игрок")
+end)
+
+-- Автоматическая установка сервера
+AddButton(adminTab, "Внедрить сервер", function()
+    -- Попытка встроить серверный скрипт
+    local success, err = pcall(function()
+        loadstring(game:HttpGet(SERVER_SCRIPT_URL, true))()
     end)
     
-    AddButton(adminTab, "Внедрить сервер", function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/Server.lua", true))()
-    end)
-    
-    AddButton(adminTab, "Применить декалы", function()
-        ReplicatedStorage.ServerEvents:FireServer("ApplyDecals", 1365169983)
-    end)
-    
-    AddButton(adminTab, "Проиграть звук", function()
-        ReplicatedStorage.ServerEvents:FireServer("PlaySound", 3469045940)
-    end)
-end
+    if success then
+        AddLabel(adminTab, "Серверная часть успешно внедрена!")
+    else
+        AddLabel(adminTab, "Ошибка внедрения: "..tostring(err))
+    end
+end)
+
+-- Быстрая установка сервера через консоль
+AddButton(adminTab, "Быстрая установка", function()
+    setclipboard('loadstring(game:HttpGet("'..SERVER_SCRIPT_URL..'", true))()')
+    AddLabel(adminTab, "Команда скопирована в буфер! Вставьте в консоль F9")
+end)
+
+AddButton(adminTab, "Применить декалы", function()
+    ReplicatedStorage.ServerEvents:FireServer("ApplyDecals", 1365169983)
+end)
+
+AddButton(adminTab, "Проиграть звук", function()
+    ReplicatedStorage.ServerEvents:FireServer("PlaySound", 3469045940)
+end)
 
 -- Кнопка закрытия
 CloseButton.MouseButton1Click:Connect(function()
@@ -430,3 +445,13 @@ TweenService:Create(MainFrame, TweenInfo.new(0.3), {
     Size = UDim2.new(0, 400, 0, 500),
     Position = UDim2.new(0.5, -200, 0.5, -250)
 }):Play()
+
+-- Автоматическая проверка сервера
+spawn(function()
+    wait(5)
+    if ReplicatedStorage:FindFirstChild("ServerEvents") then
+        AddLabel(adminTab, "Серверная часть активна")
+    else
+        AddLabel(adminTab, "Серверная часть не установлена")
+    end
+end)
