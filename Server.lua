@@ -1,227 +1,140 @@
------ СЕРВЕРНАЯ ЧАСТЬ -----
 -- Server.lua
-local HttpService = game:GetService("HttpService")
+local ServerScriptService = game:GetService("ServerScriptService")
 local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Debris = game:GetService("Debris")
 
--- Ваши ссылки
-local SERVER_SCRIPT_URL = "https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/Server.lua"
-local ADMINS_LIST_URL = "https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/admins.txt"
+-- Создаем RemoteEvents для связи
+local AdminEvent = Instance.new("RemoteEvent")
+AdminEvent.Name = "AdminEvent"
+AdminEvent.Parent = game:GetService("ReplicatedStorage")
 
--- Проверка серверного контекста
-if not RunService:IsServer() then
-    warn("Серверный скрипт запущен на клиенте!")
-    return
-end
+local PlaySoundEvent = Instance.new("RemoteEvent")
+PlaySoundEvent.Name = "PlaySoundEvent"
+PlaySoundEvent.Parent = game:GetService("ReplicatedStorage")
 
--- Создание удаленных событий
-local ServerEvents = Instance.new("RemoteEvent")
-ServerEvents.Name = "ServerEvents"
-ServerEvents.Parent = ReplicatedStorage
+local AnimationEvent = Instance.new("RemoteEvent")
+AnimationEvent.Name = "AnimationEvent"
+AnimationEvent.Parent = game:GetService("ReplicatedStorage")
 
--- Загрузка списка администраторов с GitHub
-local function LoadAdminList()
-    local success, response = pcall(function()
-        return game:HttpGet(ADMINS_LIST_URL)
-    end)
-    
-    if success and response then
-        local admins = {}
-        for line in response:gmatch("[^\r\n]+") do
-            admins[line:lower()] = true
-        end
-        return admins
+-- Переменные сервера
+local ServerLocked = false
+local LockMessage = "Сервер заблокирован администратором!"
+local Cheaters = {}
+
+-- Обработка подключения новых игроков
+Players.PlayerAdded:Connect(function(player)
+    if ServerLocked then
+        player:Kick(LockMessage)
     end
-    
-    return {["yourusername"] = true} -- Fallback
-end
+end)
 
--- Основные функции сервера
-local function ApplyDecals(decalId)
-    decalId = tonumber(decalId) or 1365169983
+-- Обработка админских команд
+AdminEvent.OnServerEvent:Connect(function(player, command, ...)
+    local args = {...}
+    local admins = loadstring(game:HttpGet("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/admins.txt", true))()
+    local isAdmin = table.find(admins, player.Name) ~= nil
     
-    -- Применение декалов к объектам мира
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("BasePart") and not obj:FindFirstChild("Inc0muDecal") then
-            local decal = Instance.new("Decal")
-            decal.Name = "Inc0muDecal"
-            decal.Texture = "rbxassetid://"..tostring(decalId)
-            decal.Face = Enum.NormalId.Top
-            decal.Parent = obj
+    if not isAdmin then return end
+    
+    if command == "KickAllCheaters" then
+        for _, cheater in ipairs(Cheaters) do
+            if cheater and cheater ~= player then
+                cheater:Kick("Античит: Обнаружено читерство")
+            end
         end
-    end
-    
-    -- Применение декалов к игрокам
-    for _, player in ipairs(Players:GetPlayers()) do
+        Cheaters = {}
+        
+    elseif command == "ServerLock" then
+        ServerLocked = args[1]
+        if #args > 1 then
+            LockMessage = args[2]
+        end
+        
+        if ServerLocked then
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= player then
+                    plr:Kick(LockMessage)
+                end
+            end
+        end
+        
+    elseif command == "InvisibleMode" then
         if player.Character then
             for _, part in ipairs(player.Character:GetDescendants()) do
-                if part:IsA("BasePart") and not part:FindFirstChild("Inc0muDecal") then
-                    local decal = Instance.new("Decal")
-                    decal.Name = "Inc0muDecal"
-                    decal.Texture = "rbxassetid://"..tostring(decalId)
-                    decal.Face = Enum.NormalId.Front
-                    decal.Parent = part
+                if part:IsA("BasePart") then
+                    part.Transparency = 1
                 end
             end
         end
+        
+    elseif command == "PlayAnimationForAll" then
+        for _, plr in ipairs(Players:GetPlayers()) do
+            AnimationEvent:FireClient(plr)
+        end
     end
-    
-    -- Создание эффекта для новых игроков
-    Players.PlayerAdded:Connect(function(player)
-        player.CharacterAdded:Connect(function(char)
-            for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") and not part:FindFirstChild("Inc0muDecal") then
-                    local decal = Instance.new("Decal")
-                    decal.Name = "Inc0muDecal"
-                    decal.Texture = "rbxassetid://"..tostring(decalId)
-                    decal.Face = Enum.NormalId.Front
-                    decal.Parent = part
-                end
-            end
-        end)
-    end)
-end
+end)
 
-local function PlaySound(soundId)
-    soundId = tonumber(soundId) or 3469045940
-    
-    -- Создание звука для всех игроков
+-- Обработка звуков
+PlaySoundEvent.OnServerEvent:Connect(function(_, soundId)
     for _, player in ipairs(Players:GetPlayers()) do
         if player.Character then
             local head = player.Character:FindFirstChild("Head")
             if head then
-                -- Удаляем старые звуки
-                for _, sound in ipairs(head:GetChildren()) do
-                    if sound:IsA("Sound") then
-                        sound:Stop()
-                        Debris:AddItem(sound, 1)
-                    end
-                end
-                
-                -- Создаем новый звук
                 local sound = Instance.new("Sound")
-                sound.SoundId = "rbxassetid://"..tostring(soundId)
-                sound.Volume = 1
+                sound.SoundId = "rbxassetid://"..soundId
                 sound.Parent = head
                 sound:Play()
-                Debris:AddItem(sound, 30)
+                game:GetService("Debris"):AddItem(sound, 10)
             end
         end
     end
-    
-    -- Обработка новых игроков
-    Players.PlayerAdded:Connect(function(player)
-        player.CharacterAdded:Connect(function(char)
-            wait(1) -- Даем время на загрузку
-            local head = char:FindFirstChild("Head")
-            if head then
-                local sound = Instance.new("Sound")
-                sound.SoundId = "rbxassetid://"..tostring(soundId)
-                sound.Volume = 1
-                sound.Parent = head
-                sound:Play()
-                Debris:AddItem(sound, 30)
+end)
+
+-- Античит система
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function(character)
+        local humanoid = character:WaitForChild("Humanoid")
+        local root = character:WaitForChild("HumanoidRootPart")
+        
+        -- Детектор полета
+        local lastPosition = root.Position
+        local flightTime = 0
+        
+        RunService.Heartbeat:Connect(function()
+            if not character:FindFirstChild("HumanoidRootPart") then return end
+            
+            -- Проверка на полет
+            if humanoid:GetState() == Enum.HumanoidStateType.Freefall then
+                local velocity = (root.Position - lastPosition).Magnitude
+                if velocity < 0.1 then
+                    flightTime += 1/30
+                    if flightTime > 3 then -- 3 секунды в воздухе
+                        table.insert(Cheaters, player)
+                    end
+                else
+                    flightTime = 0
+                end
             end
+            
+            -- Проверка на спин
+            local rotationSpeed = (root.CFrame - lastPosition).Magnitude
+            if rotationSpeed > 5 then -- Быстрое вращение
+                table.insert(Cheaters, player)
+            end
+            
+            lastPosition = root.Position
         end)
     end)
-end
-
-local function BanCheaters()
-    local admins = LoadAdminList()
-    
-    for _, player in ipairs(Players:GetPlayers()) do
-        if not admins[player.Name:lower()] then
-            local char = player.Character
-            if char then
-                local root = char:FindFirstChild("HumanoidRootPart")
-                if root then
-                    -- Проверка на летание
-                    local humanoid = char:FindFirstChild("Humanoid")
-                    if humanoid then
-                        local state = humanoid:GetState()
-                        if state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Flying then
-                            player:Kick("🔒 Античит: Обнаружен Fly Hack")
-                        end
-                    end
-                    
-                    -- Проверка на скорость
-                    if root.Velocity.Magnitude > 150 then
-                        player:Kick("🔒 Античит: Обнаружен Speed Hack")
-                    end
-                    
-                    -- Проверка на вращение
-                    if root.RotVelocity.Magnitude > 50 then
-                        player:Kick("🔒 Античит: Обнаружен Spin Hack")
-                    end
-                end
-            end
-        end
-    end
-end
-
-local function SelfDestruct()
-    -- Удаляем все созданные объекты
-    for _, obj in ipairs(ReplicatedStorage:GetChildren()) do
-        if obj.Name == "ServerEvents" then
-            obj:Destroy()
-        end
-    end
-    
-    -- Удаляем декалы
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj.Name == "Inc0muDecal" then
-            obj:Destroy()
-        end
-    end
-    
-    -- Удаляем скрипт
-    script:Destroy()
-end
-
--- Обработчик команд
-ServerEvents.OnServerEvent:Connect(function(player, command, ...)
-    local args = {...}
-    local admins = LoadAdminList()
-    local isAdmin = admins[player.Name:lower()] or false
-    
-    -- Команды, доступные всем
-    if command == "PlaySound" then
-        PlaySound(args[1])
-        return
-    end
-    
-    -- Только для администраторов
-    if not isAdmin then
-        warn(player.Name.." попытался выполнить админ-команду без прав: "..command)
-        return
-    end
-    
-    if command == "ApplyDecals" then
-        ApplyDecals(args[1])
-    elseif command == "BanCheaters" then
-        BanCheaters()
-    elseif command == "SelfDestruct" then
-        SelfDestruct()
-    end
 end)
 
--- Автозапуск эффектов при старте сервера
-task.spawn(function()
-    wait(5) -- Даем время игрокам подключиться
-    
-    -- Применяем декалы
-    ApplyDecals(1365169983)
-    
-    -- Проигрываем звук
-    PlaySound(3469045940)
-    
-    -- Запускаем античит
-    while true do
-        wait(10)
-        BanCheaters()
+-- Автоматический бан читеров каждые 30 секунд
+while true do
+    wait(30)
+    for _, cheater in ipairs(Cheaters) do
+        if cheater then
+            cheater:Kick("Античит: Обнаружено читерство")
+        end
     end
-end)
-
-print("⚡ Серверная система активирована")
+    Cheaters = {}
+end
