@@ -397,7 +397,7 @@ if IsAdmin then
     end)
     
     AddButton(adminTab, "Внедрить сервер", function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/your/repo/main/Server.lua"))()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/Server.lua", true))()
     end)
     
     AddButton(adminTab, "Применить декалы", function()
