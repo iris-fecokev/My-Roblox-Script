@@ -1,140 +1,100 @@
 -- Server.lua
-local ServerScriptService = game:GetService("ServerScriptService")
-local Players = game:GetService("Players")
-local HttpService = game:GetService("HttpService")
-local RunService = game:GetService("RunService")
-
--- Создаем RemoteEvents для связи
-local AdminEvent = Instance.new("RemoteEvent")
-AdminEvent.Name = "AdminEvent"
-AdminEvent.Parent = game:GetService("ReplicatedStorage")
-
-local PlaySoundEvent = Instance.new("RemoteEvent")
-PlaySoundEvent.Name = "PlaySoundEvent"
-PlaySoundEvent.Parent = game:GetService("ReplicatedStorage")
-
-local AnimationEvent = Instance.new("RemoteEvent")
-AnimationEvent.Name = "AnimationEvent"
-AnimationEvent.Parent = game:GetService("ReplicatedStorage")
-
--- Переменные сервера
-local ServerLocked = false
-local LockMessage = "Сервер заблокирован администратором!"
-local Cheaters = {}
-
--- Обработка подключения новых игроков
-Players.PlayerAdded:Connect(function(player)
-    if ServerLocked then
-        player:Kick(LockMessage)
-    end
-end)
-
--- Обработка админских команд
-AdminEvent.OnServerEvent:Connect(function(player, command, ...)
-    local args = {...}
-    local admins = loadstring(game:HttpGet("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/admins.txt", true))()
-    local isAdmin = table.find(admins, player.Name) ~= nil
-    
-    if not isAdmin then return end
-    
-    if command == "KickAllCheaters" then
-        for _, cheater in ipairs(Cheaters) do
-            if cheater and cheater ~= player then
-                cheater:Kick("Античит: Обнаружено читерство")
-            end
-        end
-        Cheaters = {}
-        
-    elseif command == "ServerLock" then
-        ServerLocked = args[1]
-        if #args > 1 then
-            LockMessage = args[2]
-        end
-        
-        if ServerLocked then
-            for _, plr in ipairs(Players:GetPlayers()) do
-                if plr ~= player then
-                    plr:Kick(LockMessage)
-                end
-            end
-        end
-        
-    elseif command == "InvisibleMode" then
-        if player.Character then
-            for _, part in ipairs(player.Character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.Transparency = 1
-                end
-            end
-        end
-        
-    elseif command == "PlayAnimationForAll" then
-        for _, plr in ipairs(Players:GetPlayers()) do
-            AnimationEvent:FireClient(plr)
-        end
-    end
-end)
-
--- Обработка звуков
-PlaySoundEvent.OnServerEvent:Connect(function(_, soundId)
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player.Character then
-            local head = player.Character:FindFirstChild("Head")
-            if head then
-                local sound = Instance.new("Sound")
-                sound.SoundId = "rbxassetid://"..soundId
-                sound.Parent = head
-                sound:Play()
-                game:GetService("Debris"):AddItem(sound, 10)
-            end
-        end
-    end
-end)
+local server = {}
+local shared = nil
 
 -- Античит система
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function(character)
-        local humanoid = character:WaitForChild("Humanoid")
-        local root = character:WaitForChild("HumanoidRootPart")
-        
-        -- Детектор полета
-        local lastPosition = root.Position
-        local flightTime = 0
-        
-        RunService.Heartbeat:Connect(function()
-            if not character:FindFirstChild("HumanoidRootPart") then return end
-            
-            -- Проверка на полет
-            if humanoid:GetState() == Enum.HumanoidStateType.Freefall then
-                local velocity = (root.Position - lastPosition).Magnitude
-                if velocity < 0.1 then
-                    flightTime += 1/30
-                    if flightTime > 3 then -- 3 секунды в воздухе
-                        table.insert(Cheaters, player)
-                    end
-                else
-                    flightTime = 0
-                end
+local function setupAntiCheat(player)
+    local character = player.Character
+    if not character then return end
+    
+    local humanoid = character:WaitForChild("Humanoid")
+    local root = character:WaitForChild("HumanoidRootPart")
+    
+    -- Статистика для детекции
+    local lastPosition = root.Position
+    local lastVelocity = root.Velocity
+    local lastCheck = time()
+    local rotationHistory = {}
+    
+    -- Проверка кастомных частей
+    local function hasCustomAppearance()
+        for partName, assetId in pairs(shared.Assets.BodyParts) do
+            local part = character:FindFirstChild(partName)
+            if not part or not part:FindFirstChildOfClass("SpecialMesh") then
+                return false
             end
-            
-            -- Проверка на спин
-            local rotationSpeed = (root.CFrame - lastPosition).Magnitude
-            if rotationSpeed > 5 then -- Быстрое вращение
-                table.insert(Cheaters, player)
-            end
-            
-            lastPosition = root.Position
+        end
+        return true
+    end
+    
+    -- Основной цикл проверки
+    while character and character.Parent do
+        task.wait(1)
+        
+        -- Проверка внешности
+        if not hasCustomAppearance() then
+            warn("[Античит] Игрок "..player.Name.." изменил внешность")
+            shared.ServerFunctions.BanPlayer(player, "Читерство (модификация персонажа)")
+            return
+        end
+        
+        -- Проверка скорости
+        local currentVelocity = root.Velocity
+        local speed = currentVelocity.Magnitude
+        
+        if speed > shared.CheatDetection.SpeedThreshold and humanoid.MoveDirection.Magnitude < 0.1 then
+            warn("[Античит] Игрок "..player.Name.." подозрительная скорость: "..speed)
+            shared.ServerFunctions.ReportPlayer(player, "Читерство (скорость)")
+        end
+        
+        -- Проверка полета
+        local currentPosition = root.Position
+        local distance = (currentPosition - lastPosition).Magnitude
+        local timeDiff = time() - lastCheck
+        
+        if distance > shared.CheatDetection.FlyThreshold * timeDiff and
+           humanoid:GetState() ~= Enum.HumanoidStateType.Freefall and
+           humanoid:GetState() ~= Enum.HumanoidStateType.Jumping then
+            warn("[Античит] Игрок "..player.Name.." возможный полет")
+            shared.ServerFunctions.ReportPlayer(player, "Читерство (полет)")
+        end
+        
+        -- Обновление истории
+        lastPosition = currentPosition
+        lastVelocity = currentVelocity
+        lastCheck = time()
+    end
+end
+
+-- Основная функция
+function server.init(sharedModule)
+    shared = sharedModule
+    print("Серверный модуль активирован")
+    
+    -- Реализация серверных функций
+    shared.ServerFunctions.BanPlayer = function(player, reason)
+        print("[БАН] Игрок "..player.Name..": "..reason)
+        player:Kick("Вы забанены за читерство: "..reason)
+    end
+    
+    shared.ServerFunctions.ReportPlayer = function(player, reason)
+        print("[РЕПОРТ] На игрока "..player.Name..": "..reason)
+        -- Здесь можно добавить отправку репорта
+    end
+    
+    -- Мониторинг игроков
+    game.Players.PlayerAdded:Connect(function(player)
+        player.CharacterAdded:Connect(function(character)
+            setupAntiCheat(player)
         end)
     end)
-end)
-
--- Автоматический бан читеров каждые 30 секунд
-while true do
-    wait(30)
-    for _, cheater in ipairs(Cheaters) do
-        if cheater then
-            cheater:Kick("Античит: Обнаружено читерство")
+    
+    -- Применение к существующим игрокам
+    for _, player in ipairs(game.Players:GetPlayers()) do
+        if player.Character then
+            setupAntiCheat(player)
         end
     end
-    Cheaters = {}
 end
+
+return server
