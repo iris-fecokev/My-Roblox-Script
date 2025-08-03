@@ -177,28 +177,35 @@ function client.toggleKindnessMode()
     kindnessMode = not kindnessMode
     shared.Settings.KindnessMode = kindnessMode
     print("Режим доброты: "..(kindnessMode and "ВКЛ" or "ВЫКЛ"))
+    
+    if kindnessMode then
+        -- Активация режима доброты
+        -- (реализация банов, репортов и т.д.)
+    end
 end
 
 -- GUI интерфейс
-function client.createGUI()
-    local player = game.Players.LocalPlayer
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "UniversalScriptGUI"
-    gui.Parent = player:WaitForChild("PlayerGui")
+function client.createGUI(scriptGui)
+    -- Очистка предыдущих элементов
+    for _, child in ipairs(scriptGui:GetChildren()) do
+        child:Destroy()
+    end
     
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(0.25, 0, 0.7, 0)
     frame.Position = UDim2.new(0.02, 0, 0.15, 0)
     frame.BackgroundColor3 = Color3.new(0.2, 0.2, 0.3)
     frame.BackgroundTransparency = 0.3
-    frame.Parent = gui
+    frame.Parent = scriptGui
     
     -- Заголовок
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, 0, 0.1, 0)
-    title.Text = "Универсальный скрипт v2.0"
+    title.Text = "Универсальный скрипт v3.0"
     title.TextColor3 = Color3.new(1, 1, 1)
     title.BackgroundTransparency = 1
+    title.Font = Enum.Font.SciFi
+    title.TextScaled = true
     title.Parent = frame
     
     -- Кнопки
@@ -215,8 +222,19 @@ function client.createGUI()
         button.Position = UDim2.new(0.05, 0, 0.12 + (i-1)*0.15, 0)
         button.Text = btn.Name
         button.BackgroundColor3 = Color3.new(0.3, 0.3, 0.5)
+        button.TextColor3 = Color3.new(1, 1, 1)
+        button.Font = Enum.Font.GothamBold
         button.Parent = frame
         button.MouseButton1Click:Connect(btn.Function)
+        
+        -- Анимация кнопок
+        button.MouseEnter:Connect(function()
+            button.BackgroundColor3 = Color3.new(0.4, 0.4, 0.6)
+        end)
+        
+        button.MouseLeave:Connect(function()
+            button.BackgroundColor3 = Color3.new(0.3, 0.3, 0.5)
+        end)
     end
     
     -- Поле ввода звука
@@ -225,18 +243,50 @@ function client.createGUI()
     soundBox.Position = UDim2.new(0.05, 0, 0.75, 0)
     soundBox.PlaceholderText = "ID звука"
     soundBox.Text = tostring(shared.Assets.SpookySound)
+    soundBox.BackgroundColor3 = Color3.new(0.25, 0.25, 0.35)
+    soundBox.TextColor3 = Color3.new(1, 1, 1)
     soundBox.Parent = frame
     
     local soundButton = Instance.new("TextButton")
     soundButton.Size = UDim2.new(0.25, 0, 0.08, 0)
     soundButton.Position = UDim2.new(0.75, 0, 0.75, 0)
     soundButton.Text = "Играть"
+    soundButton.BackgroundColor3 = Color3.new(0.3, 0.5, 0.3)
+    soundButton.TextColor3 = Color3.new(1, 1, 1)
+    soundButton.Font = Enum.Font.GothamBold
     soundButton.Parent = frame
     soundButton.MouseButton1Click:Connect(client.playGlobalSound)
+    
+    -- Кнопка закрытия интерфейса
+    local closeButton = Instance.new("TextButton")
+    closeButton.Size = UDim2.new(0.1, 0, 0.08, 0)
+    closeButton.Position = UDim2.new(0.9, 0, 0, 0)
+    closeButton.Text = "X"
+    closeButton.BackgroundColor3 = Color3.new(0.8, 0.2, 0.2)
+    closeButton.TextColor3 = Color3.new(1, 1, 1)
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.Parent = frame
+    closeButton.MouseButton1Click:Connect(function()
+        scriptGui.Enabled = false
+    end)
+    
+    -- Кнопка открытия интерфейса (для тестирования)
+    local openButton = Instance.new("TextButton")
+    openButton.Size = UDim2.new(0.1, 0, 0.05, 0)
+    openButton.Position = UDim2.new(0, 0, 0.95, 0)
+    openButton.Text = "Открыть меню"
+    openButton.BackgroundColor3 = Color3.new(0.2, 0.2, 0.4)
+    openButton.TextColor3 = Color3.new(1, 1, 1)
+    openButton.Font = Enum.Font.Gotham
+    openButton.Parent = scriptGui
+    openButton.Visible = false
+    openButton.MouseButton1Click:Connect(function()
+        scriptGui.Enabled = true
+    end)
 end
 
 -- Основная инициализация
-function client.init(sharedModule)
+function client.init(sharedModule, scriptGui)
     shared = sharedModule
     print("Клиентский модуль активирован")
     
@@ -250,7 +300,10 @@ function client.init(sharedModule)
     end)
     
     -- Создание интерфейса
-    client.createGUI()
+    client.createGUI(scriptGui)
+    
+    -- Активация кнопки открытия
+    scriptGui:WaitForChild("Frame"):WaitForChild("TextButton").Visible = true
 end
 
 return client
