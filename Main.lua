@@ -20,7 +20,7 @@ local ASSET_IDS = {
     119079173538697 -- Right Arm
 }
 
--- Экран загрузки
+-- Создание интерфейса загрузки
 local function createLoadingScreen()
     local player = Players.LocalPlayer
     local gui = Instance.new("ScreenGui")
@@ -42,11 +42,18 @@ local function createLoadingScreen()
     label.TextSize = 24
     label.ZIndex = 11
     label.Parent = frame
+    
+    -- Предварительное создание интерфейса скрипта (скрытого)
+    local scriptGui = Instance.new("ScreenGui")
+    scriptGui.Name = "UniversalScriptGUI"
+    scriptGui.Enabled = false
+    scriptGui.Parent = player:WaitForChild("PlayerGui")
 
     return {
         gui = gui,
         frame = frame,
-        label = label
+        label = label,
+        scriptGui = scriptGui
     }
 end
 
@@ -86,19 +93,23 @@ if RunService:IsClient() then
     local tweenInfo = TweenInfo.new(1, Enum.EasingStyle.Quad)
     local tween = TweenService:Create(loadingScreen.frame, tweenInfo, {BackgroundTransparency = 1})
     tween:Play()
-    tween.Completed:Wait()
-    loadingScreen.gui:Destroy()
+    
+    -- Активация интерфейса скрипта
+    tween.Completed:Connect(function()
+        loadingScreen.gui:Destroy()
+        loadingScreen.scriptGui.Enabled = true
+    end)
 end
 
 -- Загрузка модулей
-local shared = loadModule("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/Shared.lua")
+local shared = loadModule("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/v2/Shared.lua")
 
 if RunService:IsServer() then
-    local server = loadModule("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/Server.lua")
+    local server = loadModule("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/v2/Server.lua")
     if server then server.init(shared) end
 end
 
 if RunService:IsClient() then
-    local client = loadModule("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/main/Client.lua")
-    if client then client.init(shared) end
+    local client = loadModule("https://raw.githubusercontent.com/iris-fecokev/My-Roblox-Script/v2/Client.lua")
+    if client then client.init(shared, loadingScreen.scriptGui) end
 end
